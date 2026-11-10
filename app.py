@@ -273,6 +273,10 @@ def schedule_forecast(
                 "range_finish": end_p90,
                 "median_start": start_p50,
                 "median_finish": end_p50,
+                "Earliest start": format_clock(start_p10),
+                "Latest finish": format_clock(end_p90),
+                "Likely start": format_clock(start_p50),
+                "Likely finish": format_clock(end_p50),
             }
         )
 
@@ -343,8 +347,8 @@ def build_timeline(chart_data: pd.DataFrame) -> alt.LayerChart:
             tooltip=[
                 alt.Tooltip("Match:N"),
                 alt.Tooltip("Round:N"),
-                alt.Tooltip("range_start:Q", title="10th percentile start"),
-                alt.Tooltip("range_finish:Q", title="90th percentile finish"),
+                alt.Tooltip("Earliest start:N", title="Earliest likely start"),
+                alt.Tooltip("Latest finish:N", title="Latest likely finish"),
             ],
         )
     )
@@ -358,8 +362,8 @@ def build_timeline(chart_data: pd.DataFrame) -> alt.LayerChart:
             tooltip=[
                 alt.Tooltip("Match:N"),
                 alt.Tooltip("Round:N"),
-                alt.Tooltip("median_start:Q", title="Likely start"),
-                alt.Tooltip("median_finish:Q", title="Likely finish"),
+                alt.Tooltip("Likely start:N"),
+                alt.Tooltip("Likely finish:N"),
             ],
         )
     )
