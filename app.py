@@ -176,6 +176,25 @@ def clock_minutes(value: time) -> int:
     return value.hour * 60 + value.minute
 
 
+def parse_clock(value: object) -> time | None:
+    """'19:00', '19.00', '1900' or '19' -> time; empty -> None (no restriction)."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, time):
+        return value
+    text = str(value).strip().replace(".", ":").replace(";", ":")
+    if not text:
+        return None
+    if ":" not in text:
+        text = f"{text}:00" if len(text) <= 2 else f"{text[:-2]}:{text[-2:]}"
+    try:
+        hour, minute = (int(part) for part in text.split(":")[:2])
+        return time(hour, minute)
+    except ValueError:
+        st.warning(f"Couldn't read \"{value}\" as a time, so that match has no earliest start. Use e.g. 19:00.")
+        return None
+
+
 def format_clock(total_minutes: float | int) -> str:
     minute_value = max(0, int(round(total_minutes)))
     day_offset, within_day = divmod(minute_value, 24 * 60)
@@ -536,13 +555,14 @@ if "initial_schedule" not in st.session_state:
         {
             "Match": ["Match 1", "Match 2", "Match 3", "Match 4", "Match 5"],
             "Round": ["R32", "R32", "R32", "R32", "R32"],
-            "Not before": [None, None, None, time(19, 0), None],
+            "Not before": ["", "", "", "19:00", ""],
         }
     )
 
 plan_box.subheader("Change the court plan")
 plan_box.caption("Edit the order of play below, then press Update forecast. "
-                 "\"Not before\" = a match that can't start earlier than a set time (e.g. a TV slot).")
+                 "\"Not before\": leave empty, or type a time if a match can't start earlier (an evening session or a TV slot). "
+                 "Match 4 in the sample is an evening match at 19:00, which is why the court waits.")
 with plan_box.form("court_plan"):
     setting_cols = st.columns([1.2, 1, 1, 1])
     surface = setting_cols[0].selectbox(
@@ -587,11 +607,10 @@ with plan_box.form("court_plan"):
                 options=ROUND_OPTIONS,
                 required=True,
             ),
-            "Not before": st.column_config.TimeColumn(
-                "Not before",
-                help="Optional earliest start time for this match.",
-                format="HH:mm",
-                step=900,
+            "Not before": st.column_config.TextColumn(
+                "Not before (optional)",
+                help="Leave empty: the match starts as soon as the court is free. "
+                     "Type a time (e.g. 19:00) if it can't start earlier, such as an evening session or a TV slot.",
                 required=False,
             ),
         },
@@ -614,7 +633,7 @@ for row_index, row in edited_schedule.reset_index(drop=True).iterrows():
         {
             "match": label or f"Match {row_index + 1}",
             "round": str(round_value),
-            "not_before": row.get("Not before"),
+            "not_before": parse_clock(row.get("Not before")),
         }
     )
 
