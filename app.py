@@ -269,6 +269,7 @@ def schedule_forecast(
         pd.DataFrame(forecast_rows),
         finish_quantiles,
         pd.DataFrame(chart_rows),
+        final_end,
     )
 
 
@@ -347,15 +348,22 @@ def build_timeline(chart_data: pd.DataFrame) -> alt.LayerChart:
 
 
 st.set_page_config(
-    page_title="Court Finish",
-    page_icon="C",
+    page_title="When will the court finish?",
+    page_icon="🎾",
     layout="wide",
 )
 
-st.title("Court Finish")
-st.caption(
-    "Forecast a court’s finish time from 2018–2024 ATP Challenger match durations."
+st.title("When will the last match on this court finish?")
+st.markdown(
+    "Tennis has no fixed end time, so crews and broadcasts plan blind. "
+    "This predicts the court's finish from **thousands of real ATP Challenger matches (2018–2024)**, "
+    "so you know when the crew is done and whether overtime is coming."
 )
+hero = st.container()
+plan_box = st.container()
+details_box = st.container()
+st.divider()
+audit_box = st.container()
 
 try:
     with st.spinner("Loading ATP Challenger match history for 2018–2024…"):
@@ -375,7 +383,7 @@ archive_years = [
     if source["source"] == "archived copy"
 ]
 if archive_years:
-    st.info(
+    audit_box.info(
         "The data comes from a third-party GitHub copy of Jeff Sackmann’s "
         "dataset (github.com/Aneeshers/tennis-sackmann-archive), because the "
         "original file links returned 404."
@@ -383,7 +391,7 @@ if archive_years:
 
 total_excluded = sum(exclusion_counts.values())
 used_count = len(matches)
-with st.expander("Historical data and cleaning audit", expanded=True):
+with audit_box.expander("Where the data comes from, and how it was cleaned", expanded=False):
     audit_cols = st.columns(3)
     audit_cols[0].metric("Source rows", f"{len(raw_matches):,}")
     audit_cols[1].metric("Matches used", f"{used_count:,}")
@@ -532,9 +540,11 @@ if "initial_schedule" not in st.session_state:
         }
     )
 
-st.subheader("Court plan")
-with st.form("court_plan"):
-    setting_cols = st.columns([1.2, 1, 1])
+plan_box.subheader("Change the court plan")
+plan_box.caption("Edit the order of play below, then press Update forecast. "
+                 "\"Not before\" = a match that can't start earlier than a set time (e.g. a TV slot).")
+with plan_box.form("court_plan"):
+    setting_cols = st.columns([1.2, 1, 1, 1])
     surface = setting_cols[0].selectbox(
         "Surface",
         options=surfaces,
@@ -552,6 +562,12 @@ with st.form("court_plan"):
         max_value=60,
         value=CHANGEOVER_DEFAULT,
         step=5,
+    )
+    shift_end = setting_cols[3].time_input(
+        "Crew shift ends",
+        value=time(18, 30),
+        step=900,
+        help="Planned end of the crew's shift. Anything later is overtime.",
     )
 
     edited_schedule = st.data_editor(
@@ -574,14 +590,14 @@ with st.form("court_plan"):
             "Not before": st.column_config.TimeColumn(
                 "Not before",
                 help="Optional earliest start time for this match.",
-                format="h:mm a",
+                format="HH:mm",
                 step=900,
                 required=False,
             ),
         },
     )
     forecast_submitted = st.form_submit_button(
-        "Run 2,000-simulation forecast", type="primary"
+        "Update forecast", type="primary"
     )
 
 if forecast_submitted or "forecast_run_at" not in st.session_state:
@@ -603,11 +619,11 @@ for row_index, row in edited_schedule.reset_index(drop=True).iterrows():
     )
 
 if not schedule:
-    st.warning("Add at least one match with a round to run the forecast.")
+    hero.warning("Add at least one match with a round to run the forecast.")
     st.stop()
 
 try:
-    forecast, finish_time, timeline_data = schedule_forecast(
+    forecast, finish_time, timeline_data, final_ends = schedule_forecast(
         matches,
         str(surface),
         first_start,
@@ -615,36 +631,50 @@ try:
         schedule,
     )
 except ValueError as error:
-    st.error(str(error))
+    hero.error(str(error))
     st.stop()
 
 run_at = (
-    f"{st.session_state.forecast_run_at.strftime('%H:%M')} Europe/Riga"
+    f"{st.session_state.forecast_run_at.strftime('%H:%M')} Riga time"
 )
-st.markdown(
-    f"**Forecast for {surface}, run at {run_at}, {SIMULATIONS:,} simulations**"
-)
-st.subheader("Predicted court finish")
-finish_cols = st.columns(3)
-finish_cols[0].metric("Early · 10th percentile", format_clock(finish_time["early"]))
-finish_cols[1].metric("Likely · median", format_clock(finish_time["likely"]))
-finish_cols[2].metric("Late · 90th percentile", format_clock(finish_time["late"]))
-st.caption(
-    "The finish range is the 10th, 50th, and 90th percentiles across "
-    f"{SIMULATIONS:,} simulated court days."
-)
+shift_minutes = clock_minutes(shift_end)
+overtime = np.maximum(0, final_ends - shift_minutes)
+overtime_chance = int(round(100 * float((final_ends > shift_minutes).mean())))
+overtime_likely = int(round(float(np.percentile(overtime, 50))))
 
-st.subheader("Match-by-match forecast")
-st.dataframe(forecast, hide_index=True, width="stretch")
+with hero:
+    st.markdown(
+        f"**{len(schedule)} matches on a {surface.lower()} court, first one at "
+        f"{first_start.strftime('%H:%M')}:**"
+    )
+    finish_cols = st.columns(4)
+    finish_cols[0].metric("Most likely finish", format_clock(finish_time["likely"]))
+    finish_cols[1].metric("Early (1 in 10 days)", format_clock(finish_time["early"]))
+    finish_cols[2].metric("Late (1 in 10 days)", format_clock(finish_time["late"]))
+    finish_cols[3].metric(
+        f"Overtime after {shift_end.strftime('%H:%M')}",
+        (f"{overtime_likely // 60} h {overtime_likely % 60:02d} min" if overtime_likely >= 60
+         else f"{overtime_likely} min") if overtime_likely else "none likely",
+        f"{overtime_chance}% chance of overtime",
+        delta_color="off",
+        delta_arrow="off",
+    )
+    st.caption(
+        f"Based on {SIMULATIONS:,} simulated court days, each built from real match lengths. "
+        f"Updated {run_at}. Change the plan below."
+    )
 
-st.subheader("Court timeline")
-st.altair_chart(build_timeline(timeline_data), width="stretch")
-st.caption(
-    "The light bar spans the 10th-percentile start through the 90th-percentile "
-    "finish; the dark bar shows the likely start and finish."
-)
+with details_box:
+    st.subheader("Match by match")
+    st.altair_chart(build_timeline(timeline_data), width="stretch")
+    st.caption(
+        "Light bar: from the earliest likely start to the latest likely finish (1 day in 10 earlier or later). "
+        "Dark bar: the most likely start and finish."
+    )
+    with st.expander("All numbers per match"):
+        st.dataframe(forecast, hide_index=True, width="stretch")
 
-with st.expander("Historical duration estimates by round"):
+with audit_box.expander("How long Challenger matches take, by round"):
     st.dataframe(
         historical_duration_table(matches, str(surface)),
         hide_index=True,
