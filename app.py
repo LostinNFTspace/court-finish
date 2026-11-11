@@ -375,6 +375,7 @@ st.set_page_config(
     page_icon="🎾",
     layout="wide",
 )
+st.markdown("<style>.block-container{max-width:1240px}</style>", unsafe_allow_html=True)  # readable width on big monitors
 
 st.title("When will the last match on this court finish?")
 st.markdown(
