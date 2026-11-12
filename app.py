@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, time
 from io import BytesIO
 from urllib.error import HTTPError, URLError
@@ -377,12 +378,28 @@ st.set_page_config(
 )
 st.markdown("<style>.block-container{max-width:1240px}</style>", unsafe_allow_html=True)  # readable width on big monitors
 
+
+# --- demo strip: a 1-minute video and a short how-to, so a first-time visitor knows what this is
+PORTFOLIO = "https://janis-saulitis-portfolio.netlify.app"
+DEMO_VIDEO = os.environ.get("DEMO_VIDEO", PORTFOLIO + "/media/finish.mp4")
+
+
+@st.dialog("Court finish predictor in 1 minute", width="large")
+def show_demo():
+    st.video(DEMO_VIDEO, autoplay=True)
+
+
+def demo_strip():
+    bar = st.container(horizontal=True)
+    if bar.button("▶ 1-min demo", type="primary", key="demo_btn"):
+        show_demo()
+    with bar.popover("How it works"):
+        st.markdown("1. The answer at the top shows when the last match on the court is likely to end, and how sure that is.\n2. Change the matches on the court or the crew's shift end, and see whether overtime is coming.\n3. Hover the timeline to see each match's likely start and finish.\n4. **Where the data comes from** at the bottom shows the sources and how the data was cleaned.")
+
+
 st.title("When will the last match on this court finish?")
-st.markdown(
-    "Tennis has no fixed end time, so crews and broadcasts plan blind. "
-    "This predicts the court's finish from **thousands of real ATP Challenger matches (2018–2024)**, "
-    "so you know when the crew is done and whether overtime is coming."
-)
+st.markdown("**Predicts the court's finish from thousands of real ATP Challenger matches**, so you know when the crew is done and whether overtime is coming.")
+demo_strip()
 hero = st.container()
 plan_box = st.container()
 details_box = st.container()
